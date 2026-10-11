@@ -1,0 +1,2 @@
+# Optional: GPU all-vs-all screening (pick the wheel matching your CUDA version)
+cupy-cuda12x

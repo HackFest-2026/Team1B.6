@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Space Debris Tracker</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22%3E%3Ccircle cx=%2216%22 cy=%2216%22 r=%229%22 fill=%22%234fd1c5%22/%3E%3C/svg%3E">
+<link rel="stylesheet" href="/static/styles.css">
+<script>try{var t=localStorage.getItem("theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
+<script src="/static/vendor/three.min.js"></script>
+<script src="/static/vendor/OrbitControls.js"></script>
+<script src="/static/vendor/chart.umd.js"></script>
+<script src="/static/vendor/satellite.min.js"></script>
+<script src="/static/vendor/topojson-client.min.js"></script>
+</head>
+<body>
+<header class="top">
+  <div class="brand">
+    <svg viewBox="0 0 32 32" width="26" height="26" aria-hidden="true"><circle cx="16" cy="16" r="7" fill="none" stroke="currentColor" stroke-width="2"/><ellipse cx="16" cy="16" rx="14" ry="5" fill="none" stroke="currentColor" stroke-width="1.4" transform="rotate(-25 16 16)"/><circle cx="28" cy="10" r="2" fill="#ff5d5d"/></svg>
+    <div><div class="b1">Space Debris Tracker</div><div class="b2">Collision and re-entry monitoring</div></div>
+  </div>
+  <nav id="tabs">
+    <button data-tab="overview" class="active">Overview</button>
+    <button data-tab="conj">Conjunctions</button>
+    <button data-tab="life">Life cycle</button>
+    <button data-tab="reentry">Re-entry</button>
+    <button data-tab="weather">Space weather</button>
+    <button data-tab="anom">Anomalies</button>
+    <button data-tab="kpi">Metrics</button>
+    <button data-tab="catalog">Catalog</button>
+  </nav>
+  <div class="right">
+    <div id="clock" class="mono"></div>
+    <button id="themeBtn" class="theme-btn" title="Switch light / dark">Light mode</button>
+    <button id="runBtn" class="btn">Run pipeline</button>
+  </div>
+</header>
+<div id="progress" class="progress hidden"><div class="bar"></div><span class="lbl"></span></div>
+<details id="provBox" class="provbox"><summary id="provSum">Data sources</summary><div id="prov" class="prov"></div></details>
+
+<main>
+<!-- OVERVIEW -->
+<section id="tab-overview" class="tab active">
+  <div class="cards" id="cards"></div>
+  <div class="grid-ov">
+    <div class="panel globe-panel">
+      <div class="panel-h"><span>Live catalog</span>
+        <div class="ctrls">
+          <label><input type="checkbox" id="showDeb" checked> debris</label>
+          <label><input type="checkbox" id="showPay" checked> payloads</label>
+          <label><input type="checkbox" id="showRb" checked> rocket bodies</label>
+          <select id="speed"><option value="1">1×</option><option value="60" selected>60×</option><option value="300">300×</option><option value="1200">1200×</option></select>
+          <button id="nowBtn" class="btn sm">Now</button>
+        </div>
+      </div>
+      <div id="globe"></div>
+      <div class="legend"><i style="background:#58a6ff"></i>payload <i style="background:#f2c14e"></i>rocket body <i style="background:#9aa4b2"></i>debris <i style="background:#ff4d4f"></i>red-alert TCA <i style="background:#ffb020"></i>yellow TCA</div>
+      <div id="simtime" class="simtime mono"></div>
+      <div id="selInfo" class="selinfo hidden"></div>
+    </div>
+    <div class="panel alerts">
+      <div class="panel-h"><span>Conjunction alerts</span><span class="muted" id="alertCount"></span></div>
+      <div id="alertList" class="alert-list"></div>
+      <div class="panel-h"><span>Re-entries &lt; 72 h</span></div>
+      <div id="reList" class="alert-list small"></div>
+    </div>
+  </div>
+</section>
+
+<!-- CONJUNCTIONS -->
+<section id="tab-conj" class="tab">
+  <div class="grid-2">
+    <div class="panel">
+      <div class="panel-h"><span>Screening results</span>
+        <div class="ctrls">
+          <select id="fRisk"><option value="">all risks</option><option value="red">red</option><option value="yellow">yellow</option><option value="green">green</option></select>
+          <select id="fMiss"><option value="">all miss classes</option><option value="HIGH">high ≤ 0.5 km</option><option value="MEDIUM">medium ≤ 2 km</option><option value="LOW">low 2–4 km</option><option value="NONE">&gt; 4 km</option></select>
+          <input id="fQ" placeholder="name / NORAD" size="12">
+        </div>
+      </div>
+      <div class="tbl-wrap"><table id="conjTbl" class="tbl"><thead><tr>
+        <th>Pc risk</th><th>Miss class</th><th>Orbit</th><th>Primary</th><th>Secondary</th><th>TCA (UTC)</th><th>Miss</th><th>v<sub>rel</sub></th><th>Pc</th><th>Next update</th></tr></thead><tbody></tbody></table></div>
+    </div>
+    <div class="panel" id="conjDetail"><div class="empty">Select a conjunction to see the encounter geometry, Pc sensitivity and maneuver options.</div></div>
+  </div>
+</section>
+
+<!-- LIFE CYCLE -->
+<section id="tab-life" class="tab">
+  <div class="panel">
+    <div class="panel-h"><span>From satellite to debris</span><span class="muted" id="lifeNote"></span></div>
+    <div class="stages">
+      <div class="live"><b>1 · Commissioning</b><span>First months. Full propellant, can maneuver.</span></div>
+      <div class="live"><b>2 · Operational</b><span>Station-keeping. Collision-avoidance burns come out of the propellant budget.</span></div>
+      <div class="mid"><b>3 · Late life</b><span>Over 60 % of design life used. Every burn is weighed against the disposal reserve.</span></div>
+      <div class="dead"><b>4 · End of life</b><span>Design life over or only the disposal reserve is left. It can no longer dodge: it is debris in all but name.</span></div>
+      <div class="dead"><b>5 · Disposal or derelict</b><span>A good end: de-orbit burn, or a graveyard orbit. A failed one stays in orbit as debris.</span></div>
+    </div>
+    <div class="cards" id="lifeCards"></div>
+  </div>
+  <div class="grid-2">
+    <div class="panel"><div class="panel-h"><span>Payloads by life-cycle stage</span></div><div class="chart-box"><canvas id="lifeChart"></canvas></div></div>
+    <div class="panel"><div class="panel-h"><span>Near or past end of life</span><span class="muted" id="lifeWatchNote"></span></div>
+      <div class="tbl-wrap" style="max-height:280px"><table id="lifeTbl" class="tbl"><thead><tr><th>Satellite</th><th>Orbit</th><th>Launched</th><th>Design life</th><th>End of life</th><th>Stage</th></tr></thead><tbody></tbody></table></div></div>
+  </div>
+  <div class="panel"><div class="panel-h"><span>Assumptions</span></div><div id="lifeAssume" class="note"></div></div>
+</section>
+
+<!-- RE-ENTRY -->
+<section id="tab-reentry" class="tab">
+  <div class="panel">
+    <div class="panel-h"><span>Re-entry predictions</span></div>
+    <div class="chart-box tall"><canvas id="reChart"></canvas></div>
+    <div class="tbl-wrap"><table id="reTbl" class="tbl"><thead><tr><th>Object</th><th>Type</th><th>Perigee/Apogee</th><th>Inc</th><th>P10</th><th>P50</th><th>P90</th><th>Window</th><th>Mass</th><th>Casualty exp.</th></tr></thead><tbody></tbody></table></div>
+  </div>
+</section>
+
+<!-- WEATHER -->
+<section id="tab-weather" class="tab">
+  <div class="grid-2">
+    <div class="panel"><div class="panel-h"><span>Solar and geomagnetic activity</span><span class="muted" id="swNow"></span></div><div class="chart-box"><canvas id="swChart"></canvas></div></div>
+    <div class="panel"><div class="panel-h"><span>Atmospheric density: model vs baseline</span></div><div class="chart-box"><canvas id="rhoChart"></canvas></div></div>
+  </div>
+  <div class="panel"><div class="panel-h"><span>Density model metrics</span></div><div id="dmMetrics" class="kv"></div></div>
+</section>
+
+<!-- ANOMALIES -->
+<section id="tab-anom" class="tab">
+  <div class="grid-2">
+    <div class="panel"><div class="panel-h"><span>Maneuver and fragmentation detections</span></div>
+      <div id="anMetrics" class="kv"></div>
+      <div class="tbl-wrap"><table id="anTbl" class="tbl"><thead><tr><th>Object</th><th>Epoch</th><th>Detection</th><th>Score</th><th>Key signal</th></tr></thead><tbody></tbody></table></div></div>
+    <div class="panel"><div class="panel-h"><span>Debris clouds in the catalog</span></div>
+      <div class="chart-box"><canvas id="cloudChart"></canvas></div>
+      <div class="tbl-wrap"><table id="clTbl" class="tbl"><thead><tr><th>Likely parent</th><th>Members</th><th>Mean alt</th><th>Inc</th><th>Alt spread</th></tr></thead><tbody></tbody></table></div></div>
+  </div>
+</section>
+
+<!-- KPI -->
+<section id="tab-kpi" class="tab">
+  <div class="panel"><div class="panel-h"><span>Key performance indicators</span></div><div id="kpiTbl"></div></div>
+  <details class="more"><summary>Model details</summary><div class="inner">
+    <div id="kpiExtra"></div>
+    <div class="grid-2">
+      <div class="panel"><div class="panel-h"><span>Propagation error vs horizon</span></div><div class="chart-box"><canvas id="propChart"></canvas></div></div>
+      <div class="panel"><div class="panel-h"><span>Covariance realism (95% containment)</span></div><div class="chart-box"><canvas id="nisChart"></canvas></div></div>
+    </div>
+    <div class="panel" id="fcCard"></div>
+    <div class="panel" id="gnnCard"></div>
+  </div></details>
+</section>
+
+<!-- CATALOG -->
+<section id="tab-catalog" class="tab">
+  <div class="panel">
+    <div class="panel-h"><span>Tracked objects</span>
+      <div class="ctrls"><input id="cQ" placeholder="search name / NORAD"><select id="cType"><option value="">all types</option><option>PAYLOAD</option><option>ROCKET BODY</option><option>DEBRIS</option><option>UNKNOWN</option></select><select id="cReg"><option value="">all regimes</option><option>LEO</option><option>MEO</option><option>GEO</option><option>HEO</option></select></div></div>
+    <div class="tbl-wrap"><table id="catTbl" class="tbl"><thead><tr><th>NORAD</th><th>Name</th><th>Type</th><th>Regime</th><th>Perigee</th><th>Apogee</th><th>Inc</th><th></th></tr></thead><tbody></tbody></table></div>
+    <div id="objDetail"></div>
+  </div>
+</section>
+</main>
+<div id="toast" class="toast hidden"></div>
+<script src="/static/app.js"></script>
+</body>
+</html>
